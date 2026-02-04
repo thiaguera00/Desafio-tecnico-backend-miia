@@ -1,0 +1,23 @@
+# Python
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/.pytest_cache/
+**/.mypy_cache/
+
+# Virtual environments (important: avoids sending app/venv in build context)
+venv/
+.venv/
+app/venv/
+app/.venv/
+
+# VCS
+.git/
+
+# Editor/OS
+.vscode/
+.DS_Store
+
+# Local artifacts
+**/*.log

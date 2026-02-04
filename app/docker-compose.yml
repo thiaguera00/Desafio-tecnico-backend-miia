@@ -1,0 +1,78 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: app
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d app"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  localstack:
+    image: localstack/localstack:latest
+    environment:
+      SERVICES: s3,sqs
+      AWS_DEFAULT_REGION: us-east-1
+    ports:
+      - "4566:4566"
+    volumes:
+      - localstack_data:/var/lib/localstack
+
+  localstack-init:
+    image: localstack/localstack:latest
+    depends_on:
+      - localstack
+    environment:
+      AWS_DEFAULT_REGION: us-east-1
+    entrypoint: ["/bin/bash", "-lc"]
+    command:
+      - |
+        sleep 3
+        awslocal --endpoint-url=http://localstack:4566 s3 mb s3://submissions-bucket || true
+        awslocal --endpoint-url=http://localstack:4566 sqs create-queue --queue-name submissions-queue || true
+
+  api:
+    build:
+      context: ..
+      dockerfile: app/Dockerfile
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    depends_on:
+      db:
+        condition: service_healthy
+      localstack-init:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgresql+psycopg2://app:app@db:5432/app
+      AWS_ENDPOINT_URL: http://localstack:4566
+      AWS_REGION: us-east-1
+      S3_BUCKET: submissions-bucket
+      SQS_QUEUE_NAME: submissions-queue
+    ports:
+      - "8000:8000"
+
+  worker:
+    build:
+      context: ..
+      dockerfile: app/Dockerfile
+    command: python -m app.worker
+    depends_on:
+      db:
+        condition: service_healthy
+      localstack-init:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgresql+psycopg2://app:app@db:5432/app
+      AWS_ENDPOINT_URL: http://localstack:4566
+      AWS_REGION: us-east-1
+      S3_BUCKET: submissions-bucket
+      SQS_QUEUE_NAME: submissions-queue
+
+volumes:
+  localstack_data:
